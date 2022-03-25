@@ -20,15 +20,21 @@
         :input input
         :candidates candidates
         :offset offset
-        :start start}
+        :start start
+        :editor-state editor-state}
     props)
   #
   (default offset 0)
   #
+  (defn refocus
+    []
+    (e/put! state/focus :focus editor-state))
+  #
   (defn confirm
     [choice]
     (insert-completion gb start (+ start (length input)) choice)
-    (h/remove-layer :candidates props))
+    (h/remove-layer :candidates props)
+    (refocus))
   #
   (def filtered-candidates
     (->> candidates
@@ -67,8 +73,7 @@
              :extra-binds
              @{:escape (fn [_]
                          (h/remove-layer :candidates props)
-                         (:freja/focus
-                           (in (last (state/editor-state :stack)) 1)))
+                         (refocus))
                :down (fn [_]
                        (let [new (inc offset)
                              new (if (>= new (length filtered-candidates))
@@ -131,14 +136,27 @@
   #
   (def input
     (gb/gb-slice gb start caret))
+  #
   (def src
     (gb/content gb))
+  #
+  (def fp
+    (find |(= $
+              (string (os/cwd) "/" (gb :path)))
+          (keys state/open-files)))
+  #
+  (assert fp
+          (string/format "failed to find open file for: %p" (gb :path)))
+  #
+  (def editor-state
+    (get-in state/open-files [fp 1 :editor]))
   #
   (def state
     @{:candidates (u/enumerate-candidates src input)
       :gb gb
       :input input
-      :start start})
+      :start start
+      :editor-state editor-state})
   #
   (h/new-layer :candidates
                completion-candidates-component
