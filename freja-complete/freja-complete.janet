@@ -11,6 +11,7 @@
   [gb start end choice]
   (gb/delete-region! gb start end)
   (gb/insert-string-at-pos! gb start choice)
+  (gb/put-caret gb (+ start (length choice)))
   gb)
 
 (defn completion-candidates-component
