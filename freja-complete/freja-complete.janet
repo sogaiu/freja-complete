@@ -7,39 +7,39 @@
 
 (import ./utils :as u)
 
-(defn insert-completion
-  [gb start end choice]
-  (gb/delete-region! gb start end)
-  (gb/insert-string-at-pos! gb start choice)
-  (gb/put-caret gb (+ start (length choice)))
-  gb)
+(defn replace-with-choice
+  [gb [start end] choice]
+  # minimal edit - only insert what's necessary so undoing looks ok
+  (gb/insert-string-at-pos! gb end (string/slice choice (- end start)))
+  # put cursor at end of newly inserted content
+  (gb/put-caret gb (+ start (length choice))))
 
 (defn completion-candidates-component
   [props]
-  (def {:gb gb
-        :input input
+  (def {:bounds bounds
         :candidates candidates
-        :offset offset
-        :start start
-        :editor-state editor-state}
+        :cleanup cleanup
+        :gb gb
+        :input input
+        :offset offset}
     props)
   #
   (default offset 0)
   #
-  (defn refocus
-    []
-    (e/put! state/focus :focus editor-state))
-  #
   (defn confirm
     [choice]
-    (insert-completion gb start (+ start (length input)) choice)
-    (h/remove-layer :candidates props)
-    (refocus))
+    (replace-with-choice gb bounds choice)
+    (cleanup))
+  #
+  (def peg
+    (if (or (nil? input)
+            (empty? input))
+      ~(capture (any 1))
+      (u/search-peg input)))
   #
   (def filtered-candidates
-    (->> candidates
-         # XXX
-         ))
+    (filter |(not (empty? (peg/match peg $)))
+            candidates))
   #
   (def offset
     (-> offset
@@ -65,15 +65,8 @@
                             :text "Select candidate"}]]
          [:padding {:top 6 :bottom 6}
           [ta/textarea
-           @{:text/color :white
-             :init (fn [self _]
-                     (e/put! state/focus :focus (self :state)))
-             :text/size 20
-             :height 22
-             :extra-binds
-             @{:escape (fn [_]
-                         (h/remove-layer :candidates props)
-                         (refocus))
+           @{:extra-binds
+             @{:escape (fn [_] (cleanup))
                :down (fn [_]
                        (let [new (inc offset)
                              new (if (>= new (length filtered-candidates))
@@ -85,12 +78,15 @@
                            new (if (< new 0)
                                  (dec (length filtered-candidates))
                                  new)]
-                             (e/put! props :offset new)))
+                       (e/put! props :offset new)))
                :enter (fn [_]
                         (confirm selected-candidate))}
-             # XXX
-             #:on-change |(e/put! props :input $)
-             }]]
+             :height 22
+             :init (fn [self _]
+                     (e/put! state/focus :focus (self :state)))
+             :on-change |(e/put! props :input $)
+             :text/color :white
+             :text/size 20}]]
          [:background {:color (theme/comp-cols :bar-bg)}
           ;(seq [c :in filtered-candidates
                  :let [selected (= c selected-candidate)]]
@@ -109,6 +105,16 @@
                           :color :white}]]])])]]]]]
      [:block {:weight 0.5}]]
     [:block {:weight 1}]]])
+
+(defn make-cleanup-fn
+  [layer-name]
+  (def editor-state
+    (state/focus :focus))
+  #
+  (fn []
+    (h/remove-layer layer-name nil)
+    # restore focus
+    (e/put! state/focus :focus editor-state)))
 
 (varfn complete
   [gb]
@@ -140,26 +146,27 @@
   (def src
     (gb/content gb))
   #
-  (def fp
-    (find |(= $
-              (string (os/cwd) "/" (gb :path)))
-          (keys state/open-files)))
+  (def layer-name :candidates)
   #
-  (assert fp
-          (string/format "failed to find open file for: %p" (gb :path)))
+  (def candidates
+    (u/enumerate-candidates src input))
   #
-  (def editor-state
-    (get-in state/open-files [fp 1 :editor]))
-  #
-  (def state
-    @{:candidates (u/enumerate-candidates src input)
-      :gb gb
-      :input input
-      :start start
-      :editor-state editor-state})
-  #
-  (h/new-layer :candidates
-               completion-candidates-component
-               state)
+  (cond
+    (and (= 1 (length candidates))
+         (= (string input)
+            (first candidates)))
+    (eprintf "No other candidates found")
+    #
+    (< 1 (length candidates))
+    (h/new-layer layer-name
+                 completion-candidates-component
+                 @{:bounds [start caret]
+                   :candidates candidates
+                   # XXX: if remove-layer starts using 2nd arg, put in component?
+                   :cleanup (make-cleanup-fn layer-name)
+                   :gb gb
+                   :input input})
+    # hard for this to happen
+    (eprintf "No candidates found"))
   #
   gb)

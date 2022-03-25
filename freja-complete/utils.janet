@@ -1,3 +1,64 @@
+(defn case-insensitive-peg
+  [str]
+  ~(sequence
+     ,;(map (fn [c]
+              ~(choice ,(string/ascii-upper (string/from-bytes c))
+                       ,(string/ascii-lower (string/from-bytes c))))
+            str)))
+
+(comment
+
+  (peg/match (case-insensitive-peg "cat") "CAT")
+  #=>
+  @[]
+
+  (peg/match (case-insensitive-peg "cAT") "Cat")
+  #=>
+  @[]
+
+  )
+
+(defn search-peg
+  ``
+  Given a string `search`, returns a peg that finds start positions of
+  that string.
+
+  Matches by splitting `search` by spaces, and where each space was,
+  anything matches.
+  ``
+  [search]
+  (def parts (string/split " " search))
+  (var parts-peg @[])
+  #
+  (loop [i :range [0 (length parts)]
+         :let [p (in parts i)
+               p-peg (case-insensitive-peg p)
+               p2 (get parts (inc i))
+               p2-peg (when p2
+                        (case-insensitive-peg p2))]]
+    (array/push parts-peg p-peg)
+    (array/push parts-peg
+                (if p2-peg
+                  ~(any (if-not ,p2-peg 1))
+                  ~(any 1))))
+  #
+  ~{:main (any (choice :parts
+                       1))
+    :parts (sequence (position)
+                     ,;parts-peg)})
+
+(comment
+
+  (peg/match (search-peg "fi do") "fine dog")
+  #=>
+  @[0]
+
+  (peg/match (search-peg "f f") "firefox")
+  #=>
+  @[0]
+
+  )
+
 (defn line-to-items
   [line]
   (->> line
