@@ -1,5 +1,5 @@
 (import freja/new_gap_buffer :as gb)
-(import freja/events :as e)
+(import freja/event/subscribe :as s)
 (import freja/hiccup :as h)
 (import freja/state)
 (import freja/theme)
@@ -72,19 +72,19 @@
                              new (if (>= new (length filtered-candidates))
                                    0
                                    new)]
-                         (e/put! props :offset new)))
+                         (s/put! props :offset new)))
                :up (fn [_]
                      (let [new (dec offset)
                            new (if (< new 0)
                                  (dec (length filtered-candidates))
                                  new)]
-                       (e/put! props :offset new)))
+                       (s/put! props :offset new)))
                :enter (fn [_]
                         (confirm selected-candidate))}
              :height 22
              :init (fn [self _]
-                     (e/put! state/focus :focus (self :state)))
-             :on-change |(e/put! props :input $)
+                     (s/put! state/focus :focus (self :state)))
+             :on-change |(s/put! props :input $)
              :text/color :white
              :text/size 20}]]
          [:background {:color (theme/comp-cols :bar-bg)}
@@ -114,7 +114,7 @@
   (fn []
     (h/remove-layer layer-name nil)
     # restore focus
-    (e/put! state/focus :focus editor-state)))
+    (s/put! state/focus :focus editor-state)))
 
 (varfn complete
   [gb]
